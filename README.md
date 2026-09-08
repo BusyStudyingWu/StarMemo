@@ -2,6 +2,20 @@
 
 macOS 原生 Markdown 便签应用，使用 SwiftUI、AppKit 和 MarkdownEngine。
 
+当前版本：**0.1.2（Build 3）**，早期版本。仓库目前为私有，Release 下载需要仓库访问权限。
+
+## 下载与安装
+
+在 [GitHub Releases](https://github.com/BusyStudyingWu/StarMemo/releases) 下载
+`StarMemo-0.1.2-macOS-arm64.dmg`，打开后将 `StarMemo.app` 拖入“应用程序”。
+安装包面向 Apple Silicon（M 系列芯片）及 macOS 14+；没有提供或验证 Intel 安装包。
+
+升级前请先保存便签并退出旧版，再替换应用。首次打开可从屏幕顶部菜单栏的便签星星图标进入；它不是 Dock 常驻应用。
+
+**安全提示：当前安装包未做 Developer ID 签名和 Apple 公证，可能被 Gatekeeper 阻止。**
+不要关闭系统安全功能。如果无法确认安装包来源，请停止安装或自行从源码构建。
+Release 同时提供 SHA-256 校验文件，用于核对下载完整性，不代表 Apple 安全认证。
+
 ## 功能
 
 - Markdown 编辑与行内预览，支持标题、列表、任务框、代码等。
@@ -44,10 +58,20 @@ UI 检查需要已登录的 macOS 图形桌面，会显示并关闭临时测试�
 - `Tests`：核心与原生 UI 检查。
 - `Vendor/swift-markdown-engine`：随项目分发的 Markdown 编辑器核心。
 
+## 文档
+
+- [使用指南与注意事项](docs/USAGE.md)
+- [架构与技术栈](docs/ARCHITECTURE.md)
+- [贡献指南](CONTRIBUTING.md)
+- [安全与隐私说明](SECURITY.md)
+- [更新记录](CHANGELOG.md)
+- [发布与验收流程](docs/RELEASING.md)
+
 ## 许可说明
 
 MarkdownEngine 的 MIT 许可证保存在
 `ThirdPartyLicenses/swift-markdown-engine-LICENSE`，来源与修改记录见
 `Vendor/swift-markdown-engine/STAR_MEMO_PROVENANCE.md`。
 
-StarMemo 自身暂未指定开源许可证；仓库公开不代表授予额外的使用或再分发许可。
+StarMemo 自身采用 [MIT 许可证](LICENSE)。第三方代码保留各自的版权与许可声明。
+许可证的选择不改变仓库当前的私有可见性。
