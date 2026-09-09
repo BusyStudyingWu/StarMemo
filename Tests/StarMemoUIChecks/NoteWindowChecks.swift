@@ -5,6 +5,64 @@ import StarMemoTestSupport
 import StarMemoUI
 
 let noteWindowChecks: [Check] = [
+    Check("blank body click receives typing after rename or deactivation") {
+        for source in ["", "short"] {
+            for afterRename in [true, false] {
+                let document = MarkdownDocument(text: source, suggestedTitle: "original")
+                var renamed: String?
+                let controller = NoteWindowController(
+                    document: document, preferences: NoteWindowCoordinator.fallbackPreferences,
+                    fontSize: 15, onCloseRequest: { _ in }, onRename: { _, name in renamed = name },
+                    onPreferencesChange: { _, _ in }, onActivate: { _ in }
+                )
+                defer { controller.closeImmediately() }
+                controller.showAndActivate()
+                try await Task.sleep(for: .milliseconds(150))
+                let window = try require(controller.window)
+                let content = try require(window.contentView)
+                let editor = try require(content.firstDescendantForCheck(of: NSTextView.self))
+                editor.setSelectedRange(NSRange(location: 0, length: 0))
+                if afterRename {
+                    controller.beginRenaming()
+                    try await Task.sleep(for: .milliseconds(150))
+                    let field = try require(window.firstResponder as? NSTextView)
+                    field.insertText("renamed", replacementRange: NSRange(location: 0, length: field.string.utf16.count))
+                } else {
+                    controller.markdownFocusCoordinator.deactivate()
+                    window.makeFirstResponder(nil)
+                }
+                let viewport = try require(editor.enclosingScrollView?.contentView)
+                let point = viewport.convert(CGPoint(x: viewport.bounds.midX, y: viewport.bounds.maxY - 60), to: nil)
+                let down = try require(NSEvent.mouseEvent(
+                    with: .leftMouseDown, location: point, modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                    context: nil, eventNumber: 1, clickCount: 1, pressure: 1
+                ))
+                let up = try require(NSEvent.mouseEvent(
+                    with: .leftMouseUp, location: point, modifierFlags: [],
+                    timestamp: down.timestamp + 0.01, windowNumber: window.windowNumber,
+                    context: nil, eventNumber: 2, clickCount: 1, pressure: 0
+                ))
+                NSApplication.shared.postEvent(up, atStart: true)
+                NSApplication.shared.sendEvent(down)
+                try await Task.sleep(for: .milliseconds(150))
+                try expect(window.firstResponder === editor, "Blank click did not focus body: source=\(source), rename=\(afterRename)")
+                try expect(editor.selectedRange() == NSRange(location: source.utf16.count, length: 0), "Blank click must place caret at document end")
+                let key = try require(NSEvent.keyEvent(
+                    with: .keyDown, location: .zero, modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                    context: nil, characters: "x", charactersIgnoringModifiers: "x", isARepeat: false, keyCode: 7
+                ))
+                NSApplication.shared.sendEvent(key)
+                try await Task.sleep(for: .milliseconds(150))
+                try expect(document.text == source + "x", "Keyboard input was not inserted in body")
+                if afterRename {
+                    try expect(renamed == "renamed")
+                    try expect(!controller.state.titleBar.isEditing && !controller.state.titleBar.isExpanded)
+                }
+            }
+        }
+    },
     Check("title drag surface excludes only name and controls") {
         let controller = NoteWindowController(
             document: MarkdownDocument(suggestedTitle: "名字"),

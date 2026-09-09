@@ -6,6 +6,7 @@ public protocol MarkdownEditorNativeFocusTarget: AnyObject {
     var isEditable: Bool { get set }
     var hasMarkedText: Bool { get }
     func contains(windowPoint: CGPoint) -> Bool
+    func focusForBodyClick(windowPoint: CGPoint)
     func restyleForFocusChange()
 }
 
@@ -59,6 +60,7 @@ public final class MarkdownEditorFocusCoordinator {
         target.isEditable = true
         state.bodyInteraction()
         onBodyInteraction()
+        target.focusForBodyClick(windowPoint: windowPoint)
         return true
     }
 }
@@ -157,6 +159,31 @@ private final class NSTextViewFocusTarget: MarkdownEditorNativeFocusTarget {
             name: NSTextView.didChangeSelectionNotification,
             object: textView
         )
+    }
+
+    func focusForBodyClick(windowPoint: CGPoint) {
+        guard let textView, let window = textView.window else { return }
+        let end = NSRange(location: textView.string.utf16.count, length: 0)
+        if let layout = textView.textLayoutManager {
+            layout.ensureLayout(for: layout.documentRange)
+        }
+        // AppKit's character hit testing does not reliably focus an empty
+        // document or space beneath its final line. Keep text clicks native,
+        // but explicitly map that blank area to EOF without adding newlines.
+        let endRect = textView.firstRect(forCharacterRange: end, actualRange: nil)
+        let screenPoint = window.convertPoint(toScreen: windowPoint)
+        if textView.string.isEmpty || (endRect.height > 0 && screenPoint.y < endRect.minY) {
+            textView.setSelectedRange(end)
+        }
+        window.makeFirstResponder(textView)
+        // Removing the SwiftUI title field can clear firstResponder on the
+        // next update. Restore it only if no other input control took focus.
+        Task { @MainActor [weak textView, weak window] in
+            await Task.yield()
+            guard let textView, let window, textView.isEditable, window.isKeyWindow,
+                  window.firstResponder == nil || window.firstResponder === window || window.firstResponder === window.contentView else { return }
+            window.makeFirstResponder(textView)
+        }
     }
 }
 

@@ -2,12 +2,12 @@
 
 macOS 原生 Markdown 便签应用，使用 SwiftUI、AppKit 和 MarkdownEngine。
 
-当前版本：**0.1.2（Build 3）**，早期版本。仓库目前为私有，Release 下载需要仓库访问权限。
+当前版本：**0.1.3（Build 4）**，早期版本。仓库目前为私有，Release 下载需要仓库访问权限。
 
 ## 下载与安装
 
 在 [GitHub Releases](https://github.com/BusyStudyingWu/StarMemo/releases) 下载
-`StarMemo-0.1.2-macOS-arm64.dmg`，打开后将 `StarMemo.app` 拖入“应用程序”。
+`StarMemo-0.1.3-macOS-arm64.dmg`，打开后将 `StarMemo.app` 拖入“应用程序”。
 安装包面向 Apple Silicon（M 系列芯片）及 macOS 14+；没有提供或验证 Intel 安装包。
 
 升级前请先保存便签并退出旧版，再替换应用。首次打开可从屏幕顶部菜单栏的便签星星图标进入；它不是 Dock 常驻应用。
@@ -47,7 +47,7 @@ swift run StarMemoUIChecks
 ```
 
 UI 检查需要已登录的 macOS 图形桌面，会显示并关闭临时测试窗口。
-2026-09-08 验证：核心检查 29 项、UI 检查 90 项通过，Release 构建成功。
+2026-09-08 验证：核心检查 29 项、UI 检查 91 项通过，Release 构建成功。
 连续鼠标拖动手感及多显示器交互尚未完成手动验收。
 
 ## 项目结构

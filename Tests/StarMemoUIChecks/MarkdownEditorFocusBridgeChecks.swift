@@ -10,12 +10,14 @@ private final class NativeFocusTargetSpy: MarkdownEditorNativeFocusTarget {
     var restyleCount = 0
     var bodyInteractionCount = 0
     var selectionMutationCount = 0
+    var focusCount = 0
 
     init(hitResult: Bool = true) {
         self.hitResult = hitResult
     }
 
     func contains(windowPoint: CGPoint) -> Bool { hitResult }
+    func focusForBodyClick(windowPoint: CGPoint) { focusCount += 1 }
     func restyleForFocusChange() { restyleCount += 1 }
 }
 
@@ -49,6 +51,7 @@ let markdownEditorFocusBridgeChecks: [Check] = [
         try expect(target.isEditable)
         try expect(state.revealsActiveBlockMarkers)
         try expect(target.bodyInteractionCount == 1)
+        try expect(target.focusCount == 1)
     },
     Check("focus bridge ignores title-bar mouse downs") {
         let state = LivePreviewState()
@@ -61,5 +64,6 @@ let markdownEditorFocusBridgeChecks: [Check] = [
         try expect(!bridge.handleMouseDown(windowPoint: .zero))
         try expect(!target.isEditable)
         try expect(target.bodyInteractionCount == 0)
+        try expect(target.focusCount == 0)
     },
 ]
