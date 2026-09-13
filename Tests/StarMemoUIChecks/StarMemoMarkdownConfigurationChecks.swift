@@ -6,7 +6,13 @@ import StarMemoUI
 
 @MainActor
 let starMemoMarkdownConfigurationChecks: [Check] = [
-    Check("note palette preserves body and checkbox contrast over extreme backdrops") {
+    Check("background alpha is linear without a hidden opacity floor") {
+        let palette = NoteColorPalette(appearance: .clear)
+        for alpha in [0.0, 0.25, 0.5, 0.75, 1.0] {
+            try expect(palette.surfaceOpacity(for: alpha) == alpha, "Background alpha must equal the requested alpha")
+        }
+    },
+    Check("opaque note palette preserves body and checkbox contrast over extreme backdrops") {
         func luminance(_ rgb: [Double]) -> Double {
             let linear = rgb.map { $0 <= 0.04045 ? $0 / 12.92 : pow(($0 + 0.055) / 1.055, 2.4) }
             return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722
@@ -20,7 +26,9 @@ let starMemoMarkdownConfigurationChecks: [Check] = [
             let surface = try require(palette.surface.usingColorSpace(.sRGB))
             let ink = try require(palette.ink.usingColorSpace(.sRGB))
             let fg = [ink.redComponent, ink.greenComponent, ink.blueComponent].map(Double.init)
-            for opacity in [0.65, 0.8, 1.0] {
+            // Transparent notes intentionally expose the user's desktop; do not
+            // reintroduce an opacity floor to enforce contrast at that endpoint.
+            for opacity in [1.0] {
                 for backdrop in [0.0, 1.0] {
                     let alpha = palette.surfaceOpacity(for: opacity)
                     let bg = [surface.redComponent, surface.greenComponent, surface.blueComponent].map { Double($0) * alpha + backdrop * (1 - alpha) }

@@ -640,7 +640,7 @@ let noteWindowChecks: [Check] = [
             isPinned: false
         )
         let state = NoteWindowState(preferences: preferences, documentID: UUID())
-        try expect(state.opacity == 0.65)
+        try expect(state.opacity == 0.2)
         state.togglePinned()
         try expect(state.isPinned)
         state.opacity = 2

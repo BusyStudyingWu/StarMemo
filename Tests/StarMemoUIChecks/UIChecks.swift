@@ -29,6 +29,9 @@ struct UIChecks {
                 Check("legacy: " + $0.name, body: $0.body)
             }
             + noteWindowChecks
+            + currentNoteSettingsChecks
+            + globalSettingsChecks
+            + transparencyRenderingChecks
             + noteWindowCoordinatorChecks
             + statusBarIconChecks
             + appControllerChecks)

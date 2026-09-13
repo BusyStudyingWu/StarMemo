@@ -12,7 +12,7 @@ fi
 export CLANG_MODULE_CACHE_PATH="$STAR_MEMO_ROOT/.build/clang-module-cache"
 export SWIFTPM_MODULECACHE_OVERRIDE="$STAR_MEMO_ROOT/.build/swiftpm-module-cache"
 
-swift build -c release --product StarMemo
+swift build "$@" -c release --product StarMemo
 
 STAR_MEMO_APP="$STAR_MEMO_ROOT/dist/StarMemo.app"
 mkdir -p "$STAR_MEMO_APP/Contents/MacOS" "$STAR_MEMO_APP/Contents/Resources"

@@ -111,10 +111,25 @@ let appControllerChecks: [Check] = [
         settings.defaultPinned = true
 
         let restored = AppSettings(defaults: defaults)
-        try expect(restored.windowOpacity == 0.65)
+        try expect(abs(restored.windowOpacity - 0.2) < 0.000001)
         try expect(restored.editorFontSize == 28)
         try expect(restored.defaultAppearance == .lavender)
         try expect(restored.defaultPinned)
+    },
+    Check("app settings migrate legacy opacity exactly once") {
+        let suite = "TransparencyMigration.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(0.65, forKey: "windowOpacity")
+        let migrated = AppSettings(defaults: defaults)
+        try expect(abs(migrated.windowOpacity - 0.82) < 0.000001, "Old opacity must migrate to its actual background alpha")
+        migrated.windowOpacity = 0.5
+        defaults.set(1.0, forKey: "windowOpacity")
+        try expect(AppSettings(defaults: defaults).windowOpacity == 0.5, "Migration must not overwrite the new value")
+        migrated.windowOpacity = -1
+        try expect(migrated.windowOpacity == 0)
+        migrated.windowOpacity = 2
+        try expect(migrated.windowOpacity == 1)
     },
     Check("app controller reports the failed file path") {
         let router = CommandRouterSpy()
@@ -150,7 +165,7 @@ let appControllerChecks: [Check] = [
         try expect(router.commands == ["flush", "quit"])
         try expect(terminationCount == 0)
     },
-    Check("launch and reopen always reveal a note") {
+    Check("launch creates a note and Dock reopen shows existing notes") {
         let router = CommandRouterSpy()
         let defaults = UserDefaults(suiteName: "LaunchVisibility.\(UUID().uuidString)")!
         let controller = AppController(
@@ -165,6 +180,6 @@ let appControllerChecks: [Check] = [
         controller.showInitialNoteIfNeeded()
         controller.handleReopen()
 
-        try expect(router.commands == ["new", "new"])
+        try expect(router.commands == ["new", "show"])
     },
 ]

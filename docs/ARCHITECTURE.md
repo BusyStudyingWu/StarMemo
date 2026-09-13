@@ -28,6 +28,10 @@ StarMemoCoreChecks / StarMemoUIChecks
 `NoteWindowCoordinator` 管理打开的文档、窗口、保存/关闭决策和恢复任务。
 每个 `NoteWindowController` 持有一个原生面板，并挂载 SwiftUI 界面。
 
+0.1.4 起采用普通应用激活策略，保留 `MenuBarExtra`，并由 `StarMemoAppCommands` 提供应用主菜单命令。
+0.1.5 起设置不再追踪活动便签。`AppSettings.backgroundTransparency` 保存真实透明度，窗口控制器分别订阅各项全局设置；首次值覆盖旧外观但保留窗口位置，关闭时取消订阅。
+`NoteBackgroundView` 是唯一背景 alpha 层，直接使用 `1 - backgroundTransparency`，不叠加独立磨砂底板。正文和控件保持独立，窗口 alpha 不变。系统减少透明度仅覆盖显示及滑块启用状态，不回写用户保存值。
+
 ## 编辑数据流
 
 `MarkdownDocument` 是 Markdown 正文的唯一业务数据源。

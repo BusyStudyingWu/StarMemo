@@ -52,12 +52,17 @@ public final class AppSettings: ObservableObject {
             defaults.set(editorFontSize, forKey: "editorFontSize")
         }
     }
-    @Published public var windowOpacity: Double {
+    @Published public var backgroundTransparency: Double {
         didSet {
-            let clamped = min(max(windowOpacity, 0.65), 1)
-            if clamped != windowOpacity { windowOpacity = clamped; return }
-            defaults.set(windowOpacity, forKey: "windowOpacity")
+            let clamped = backgroundTransparency.isFinite ? min(max(backgroundTransparency, 0), 1) : 0
+            if clamped != backgroundTransparency { backgroundTransparency = clamped }
+            defaults.set(clamped, forKey: "backgroundTransparency")
         }
+    }
+    /// Compatibility for window preferences; this is actual alpha, never a remapped slider value.
+    public var windowOpacity: Double {
+        get { 1 - backgroundTransparency }
+        set { backgroundTransparency = 1 - newValue }
     }
     @Published public var defaultPinned: Bool {
         didSet { defaults.set(defaultPinned, forKey: "defaultPinned") }
@@ -71,9 +76,17 @@ public final class AppSettings: ObservableObject {
         editorFontSize = defaults.object(forKey: "editorFontSize") == nil
             ? 15
             : min(max(defaults.double(forKey: "editorFontSize"), 12), 28)
-        windowOpacity = defaults.object(forKey: "windowOpacity") == nil
-            ? 0.94
-            : min(max(defaults.double(forKey: "windowOpacity"), 0.65), 1)
+        if defaults.object(forKey: "backgroundTransparency") != nil {
+            let stored = defaults.double(forKey: "backgroundTransparency")
+            backgroundTransparency = stored.isFinite ? min(max(stored, 0), 1) : 0
+        } else {
+            // One-time migration only: preserve the old background's effective alpha.
+            let stored = defaults.object(forKey: "windowOpacity") == nil ? 0.94 : defaults.double(forKey: "windowOpacity")
+            let legacy = stored.isFinite ? min(max(stored, 0.65), 1) : 0.94
+            let migrated = 1 - (0.82 + (legacy - 0.65) / 0.35 * 0.18)
+            backgroundTransparency = migrated
+            defaults.set(migrated, forKey: "backgroundTransparency")
+        }
         defaultPinned = defaults.bool(forKey: "defaultPinned")
     }
 }
@@ -149,7 +162,7 @@ public final class AppController: ObservableObject {
     }
 
     public func handleReopen() {
-        newNote()
+        if router.hasOpenDocuments { showAll() } else { newNote() }
     }
 
     public func openDocument() async {

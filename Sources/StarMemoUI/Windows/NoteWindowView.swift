@@ -16,7 +16,7 @@ public final class NoteWindowState: ObservableObject {
 
     public init(preferences: NoteWindowPreferences, documentID: UUID, fontSize: CGFloat = 15) {
         appearance = preferences.appearance
-        opacity = min(max(preferences.opacity, 0.65), 1)
+        opacity = preferences.opacity.isFinite ? min(max(preferences.opacity, 0), 1) : 1
         isPinned = preferences.isPinned
         self.fontSize = fontSize
         markdownCommandBus = StarMemoMarkdownCommandBus(documentID: documentID)
@@ -27,7 +27,7 @@ public final class NoteWindowState: ObservableObject {
     }
 
     public func normalizeOpacity() {
-        opacity = min(max(opacity, 0.65), 1)
+        opacity = opacity.isFinite ? min(max(opacity, 0), 1) : 1
     }
 
     public func windowBecameKey() {
@@ -70,7 +70,9 @@ public final class NoteWindowState: ObservableObject {
 }
 
 public struct NoteWindowView: View {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceTransparency) private var systemReduceTransparency
+    private let reduceTransparencyOverride: Bool?
+    private var reduceTransparency: Bool { reduceTransparencyOverride ?? systemReduceTransparency }
     @ObservedObject private var document: MarkdownDocument
     @ObservedObject private var state: NoteWindowState
     @ObservedObject private var livePreview: LivePreviewState
@@ -87,7 +89,8 @@ public struct NoteWindowView: View {
         onRename: @escaping (String) -> Void,
         onTogglePinned: @escaping () -> Void,
         onAppearanceChange: @escaping (NoteAppearance) -> Void,
-        onClose: @escaping () -> Void
+        onClose: @escaping () -> Void,
+        reduceTransparencyOverride: Bool? = nil
     ) {
         _document = ObservedObject(wrappedValue: document)
         _state = ObservedObject(wrappedValue: state)
@@ -97,14 +100,13 @@ public struct NoteWindowView: View {
         self.onTogglePinned = onTogglePinned
         self.onAppearanceChange = onAppearanceChange
         self.onClose = onClose
+        self.reduceTransparencyOverride = reduceTransparencyOverride
     }
 
     public var body: some View {
         let palette = NoteColorPalette(appearance: state.appearance)
         ZStack(alignment: .top) {
-            if !reduceTransparency { VisualEffectBackground() }
-            Color(nsColor: palette.surface)
-                .opacity(reduceTransparency ? 1 : palette.surfaceOpacity(for: state.opacity))
+            NoteBackgroundView(appearance: state.appearance, opacity: state.opacity, reduceTransparency: reduceTransparency)
             StarMemoMarkdownEditor(
                 text: Binding(
                     get: { document.text },
@@ -144,16 +146,4 @@ public struct NoteWindowView: View {
         .environment(\.colorScheme, state.appearance == .graphite ? .dark : .light)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
-}
-
-private struct VisualEffectBackground: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .hudWindow
-        view.blendingMode = .behindWindow
-        view.state = .active
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }

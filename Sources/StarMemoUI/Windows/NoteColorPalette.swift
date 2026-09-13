@@ -18,8 +18,6 @@ public struct NoteColorPalette {
     }
 
     public func surfaceOpacity(for windowOpacity: Double) -> Double {
-        // Keep a contrast floor even over an entirely black or white desktop.
-        let clamped = min(max(windowOpacity, 0.65), 1)
-        return 0.82 + (clamped - 0.65) / 0.35 * 0.18
+        windowOpacity.isFinite ? min(max(windowOpacity, 0), 1) : 1
     }
 }

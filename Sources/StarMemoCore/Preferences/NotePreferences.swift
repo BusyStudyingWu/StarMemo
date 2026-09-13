@@ -23,7 +23,7 @@ public struct NoteWindowPreferences: Codable, Equatable, Sendable {
     ) {
         self.frame = frame
         self.appearance = appearance
-        self.opacity = min(max(opacity, 0.65), 1.0)
+        self.opacity = opacity.isFinite ? min(max(opacity, 0), 1.0) : 1
         self.isPinned = isPinned
     }
 }

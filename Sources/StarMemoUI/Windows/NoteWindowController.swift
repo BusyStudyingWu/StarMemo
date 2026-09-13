@@ -32,6 +32,7 @@ public final class NoteWindowController: NSWindowController, NSWindowDelegate, N
     nonisolated(unsafe) private var bodyMouseMonitor: Any?
     private var markdownCommandRelay: StarMemoMarkdownCommandRelay?
     private var fontSizeObserver: AnyCancellable?
+    private var settingsObservers: Set<AnyCancellable> = []
 
     public init(
         document: MarkdownDocument,
@@ -120,6 +121,9 @@ public final class NoteWindowController: NSWindowController, NSWindowDelegate, N
         bodyMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) {
             [weak self] event in
             guard let self, event.window === self.window else { return event }
+            if !NSApplication.shared.isActive {
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            }
             self.markdownFocusCoordinator.handleMouseDown(windowPoint: event.locationInWindow)
             return event
         }
@@ -131,6 +135,19 @@ public final class NoteWindowController: NSWindowController, NSWindowDelegate, N
                     && self.state.livePreview.revealsActiveBlockMarkers
             }
         )
+        // Apply initial global values as well as changes. Saved window frames remain intact.
+        if let settings {
+            settings.$backgroundTransparency.sink { [weak self] value in
+                self?.setOpacity(value.isFinite ? 1 - min(max(value, 0), 1) : 1)
+            }.store(in: &settingsObservers)
+            settings.$defaultAppearance.sink { [weak self] value in
+                self?.setAppearance(value)
+            }.store(in: &settingsObservers)
+            settings.$defaultPinned.sink { [weak self] value in
+                guard let self, self.state.isPinned != value else { return }
+                self.togglePinned()
+            }.store(in: &settingsObservers)
+        }
     }
 
     public required init?(coder: NSCoder) {
@@ -158,6 +175,8 @@ public final class NoteWindowController: NSWindowController, NSWindowDelegate, N
     }
 
     public func closeImmediately() {
+        settingsObservers.removeAll()
+        fontSizeObserver = nil
         markdownCommandRelay = nil
         if let bodyMouseMonitor {
             NSEvent.removeMonitor(bodyMouseMonitor)

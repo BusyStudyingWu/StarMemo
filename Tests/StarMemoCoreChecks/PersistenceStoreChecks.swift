@@ -103,7 +103,7 @@ let persistenceStoreChecks: [Check] = [
         let loaded = store.load(for: key)
         try expect(loaded?.frame == preferences.frame)
         try expect(loaded?.appearance == .mistBlue)
-        try expect(loaded?.opacity == 0.65)
+        try expect(loaded?.opacity == 0.2)
         try expect(loaded?.isPinned == true)
     },
 ]

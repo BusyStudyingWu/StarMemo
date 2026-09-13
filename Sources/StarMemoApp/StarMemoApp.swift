@@ -35,7 +35,7 @@ struct StarMemoApp: App {
     @StateObject private var controller: AppController
 
     init() {
-        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.shared.setActivationPolicy(.regular)
         let liveController = AppController.live()
         _controller = StateObject(wrappedValue: liveController)
         appDelegate.controller = liveController
@@ -47,7 +47,13 @@ struct StarMemoApp: App {
         } label: {
             StatusBarIcon()
         }
-        .commands { MarkdownCommands() }
-        Settings { SettingsView(settings: controller.settings) }
+        Settings {
+            SettingsView(settings: controller.settings)
+        }
+        .commands {
+            StarMemoAppCommands(controller: controller)
+            MarkdownCommands()
+            TextEditingCommands()
+        }
     }
 }
