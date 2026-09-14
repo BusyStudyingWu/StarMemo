@@ -10,3 +10,4 @@
 - 2026-08-31: configurable unchecked checkbox fill/stroke and stroke width, preserving upstream defaults.
 - 2026-09-07: equatable editor themes; refresh coordinator and native view theme together and restyle existing content on theme changes, preserving selection, scroll position and undo history.
 - 2026-09-08: preserve selection and viewport on font-only updates; defer host updates during marked-text composition and notify on unmark; synchronize native undo/redo results back to the document Binding, scoped to the text view's own undo manager.
+- 2026-09-14: configurable completed checkbox fill and checkmark colors, retaining the historical mint fill and dark checkmark as engine defaults. StarMemo supplies theme-specific pale fills; checkbox geometry and interaction are unchanged.

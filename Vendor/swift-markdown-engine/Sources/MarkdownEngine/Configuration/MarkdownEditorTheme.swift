@@ -80,6 +80,10 @@ public struct MarkdownEditorTheme: Sendable, Equatable {
     public var taskCheckboxUncheckedFill: NSColor
     /// Stroke color used for an unchecked task checkbox.
     public var taskCheckboxUncheckedStroke: NSColor
+    /// Fill color used for a completed task checkbox.
+    public var taskCheckboxCheckedFill: NSColor
+    /// Stroke color used for the completed task checkmark.
+    public var taskCheckboxCheckmark: NSColor
 
     // MARK: Init
 
@@ -96,7 +100,9 @@ public struct MarkdownEditorTheme: Sendable, Equatable {
         latexDarkModeText: NSColor = .white,
         strikethroughColor: NSColor = .labelColor,
         taskCheckboxUncheckedFill: NSColor = NSColor(white: 1, alpha: 0.035),
-        taskCheckboxUncheckedStroke: NSColor = NSColor(white: 1, alpha: 0.30)
+        taskCheckboxUncheckedStroke: NSColor = NSColor(white: 1, alpha: 0.30),
+        taskCheckboxCheckedFill: NSColor = NSColor(calibratedRed: 0.69, green: 0.93, blue: 0.81, alpha: 1),
+        taskCheckboxCheckmark: NSColor = NSColor(calibratedRed: 0.06, green: 0.07, blue: 0.08, alpha: 1)
     ) {
         self.bodyText = bodyText
         self.mutedText = mutedText
@@ -111,6 +117,8 @@ public struct MarkdownEditorTheme: Sendable, Equatable {
         self.strikethroughColor = strikethroughColor
         self.taskCheckboxUncheckedFill = taskCheckboxUncheckedFill
         self.taskCheckboxUncheckedStroke = taskCheckboxUncheckedStroke
+        self.taskCheckboxCheckedFill = taskCheckboxCheckedFill
+        self.taskCheckboxCheckmark = taskCheckboxCheckmark
     }
 
     /// System-native palette built from `NSColor` dynamic system colors.

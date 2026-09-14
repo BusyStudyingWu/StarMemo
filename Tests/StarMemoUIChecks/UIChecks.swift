@@ -32,6 +32,7 @@ struct UIChecks {
             + currentNoteSettingsChecks
             + globalSettingsChecks
             + transparencyRenderingChecks
+            + themedCheckboxChecks
             + noteWindowCoordinatorChecks
             + statusBarIconChecks
             + appControllerChecks)

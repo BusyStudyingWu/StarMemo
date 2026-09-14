@@ -8,7 +8,8 @@ public enum StarMemoMarkdownThemeFactory {
         fontSize: CGFloat,
         bus: MarkdownEditorBus
     ) -> MarkdownEditorConfiguration {
-        let body = NoteColorPalette(appearance: appearance).ink
+        let palette = NoteColorPalette(appearance: appearance)
+        let body = palette.ink
         let theme = MarkdownEditorTheme(
             bodyText: body,
             mutedText: body.withAlphaComponent(0.48),
@@ -17,8 +18,10 @@ public enum StarMemoMarkdownThemeFactory {
             link: .linkColor,
             incompleteLink: .systemBlue.withAlphaComponent(0.72),
             strikethroughColor: body.withAlphaComponent(0.62),
-            taskCheckboxUncheckedFill: body.withAlphaComponent(0.08),
-            taskCheckboxUncheckedStroke: body.withAlphaComponent(0.62)
+            taskCheckboxUncheckedFill: .clear,
+            taskCheckboxUncheckedStroke: body.withAlphaComponent(0.62),
+            taskCheckboxCheckedFill: palette.checkedTaskFill,
+            taskCheckboxCheckmark: palette.taskCheckmark
         )
         return MarkdownEditorConfiguration(
             theme: theme,
