@@ -32,6 +32,8 @@ public final class NoteWindowCoordinator {
     private var textObservers: [UUID: AnyCancellable] = [:]
     private var recoveryTasks: [UUID: Task<Void, Never>] = [:]
     private var lastActiveDocumentID: UUID?
+    private var isRestoringSession = false
+    private var sessionLoadFailed = false
 
     public var openDocumentCount: Int { documents.count }
 
@@ -129,6 +131,7 @@ public final class NoteWindowCoordinator {
     public func requestClose(_ id: UUID) async -> Bool {
         guard let document = documents[id] else { return true }
         guard document.isDirty else {
+            guard persistSession(excluding: id) else { return false }
             close(document)
             return true
         }
@@ -136,10 +139,11 @@ public final class NoteWindowCoordinator {
         switch await dialogs.decideClose(for: document) {
         case .save:
             guard await save(document) else { return false }
+            guard persistSession(excluding: id) else { return false }
             close(document)
             return true
         case .discard:
-            try? recoveryStore.remove(id: document.id)
+            guard persistSession(excluding: id) else { return false }
             close(document)
             return true
         case .cancel:
@@ -154,25 +158,7 @@ public final class NoteWindowCoordinator {
     }
 
     public func requestQuit() async -> Bool {
-        flushRecoveryDrafts()
-        var documentsToClose: [MarkdownDocument] = []
-        for document in Array(documents.values) {
-            if !document.isDirty {
-                documentsToClose.append(document)
-                continue
-            }
-            switch await dialogs.decideClose(for: document) {
-            case .save:
-                guard await save(document) else { return false }
-                documentsToClose.append(document)
-            case .discard:
-                documentsToClose.append(document)
-            case .cancel:
-                return false
-            }
-        }
-        documentsToClose.forEach(close)
-        return true
+        persistSession()
     }
 
     public func showAll() {
@@ -198,6 +184,45 @@ public final class NoteWindowCoordinator {
     }
 
     public func restoreDrafts() throws {
+        isRestoringSession = true
+        defer { isRestoringSession = false }
+        do {
+            if let session = try recoveryStore.sessionStore.load() {
+                if let warning = session.warning { reportSessionError(warning) }
+                for record in session.documents where documents[record.id] == nil {
+                    var text = record.text
+                    var savedText = record.savedText
+                    var url = record.fileURL
+                    var date = record.modificationDate
+                    if let fileURL = url, let existingID = documentIDsByURL[canonicalFileURL(fileURL)] {
+                        if documents[existingID]?.text == text { continue }
+                        reportSessionError("\(fileURL.lastPathComponent) 存在不同内容的恢复记录，额外内容已保留为草稿。")
+                        url = nil; savedText = ""; date = nil
+                    }
+                    if let fileURL = url {
+                        if let loaded = try? documentStore.load(from: fileURL) {
+                            if text == savedText {
+                                text = loaded.text; savedText = loaded.text; date = loaded.modificationDate
+                            }
+                        } else {
+                            reportSessionError("无法读取 \(fileURL.lastPathComponent)，已将上次内容恢复为草稿。")
+                            url = nil; savedText = ""; date = nil
+                        }
+                    }
+                    let document = MarkdownDocument(id: record.id, text: text, savedText: savedText,
+                        fileURL: url, suggestedTitle: record.title, lastKnownModificationDate: date)
+                    let preferences = record.preferences
+                    preferencesStore.save(preferences, for: NotePreferencesStore.key(documentID: record.id, fileURL: url))
+                    register(document)
+                    if document.isDirty { document.markRecoveryProtected() }
+                }
+                return
+            }
+        } catch {
+            sessionLoadFailed = true
+            reportSessionError("会话读取失败，已停止覆盖恢复记录：\(error.localizedDescription)")
+            throw error
+        }
         for draft in try recoveryStore.loadAll() where documents[draft.id] == nil {
             let document: MarkdownDocument
             if let url = draft.fileURL,
@@ -224,12 +249,15 @@ public final class NoteWindowCoordinator {
             register(document)
             if document.isDirty { document.markRecoveryProtected() }
         }
+        isRestoringSession = false
+        _ = persistSession()
     }
 
     public func flushRecoveryDrafts() {
         for document in documents.values where document.isDirty {
             saveRecovery(for: document)
         }
+        _ = persistSession()
     }
 
     private func register(_ document: MarkdownDocument) {
@@ -256,6 +284,7 @@ public final class NoteWindowCoordinator {
         lastActiveDocumentID = document.id
         observeTextChanges(in: document)
         window.showAndActivate()
+        if !isRestoringSession { _ = persistSession() }
     }
 
     private func observeTextChanges(in document: MarkdownDocument) {
@@ -268,6 +297,7 @@ public final class NoteWindowCoordinator {
     }
 
     private func scheduleRecovery(for document: MarkdownDocument) {
+        guard documents[document.id] === document else { return }
         recoveryTasks[document.id]?.cancel()
         recoveryTasks[document.id] = Task { @MainActor [weak self, weak document] in
             try? await Task.sleep(for: .seconds(1))
@@ -277,6 +307,8 @@ public final class NoteWindowCoordinator {
     }
 
     private func saveRecovery(for document: MarkdownDocument) {
+        guard documents[document.id] === document else { return }
+        defer { if !isRestoringSession { _ = persistSession() } }
         guard document.isDirty else {
             try? recoveryStore.remove(id: document.id)
             return
@@ -333,6 +365,7 @@ public final class NoteWindowCoordinator {
                 guard let url = document.fileURL else { return false }
                 document.replace(with: try documentStore.load(from: url))
                 try? recoveryStore.remove(id: document.id)
+                _ = persistSession()
                 return true
             } catch {
                 dialogs.presentError(error)
@@ -397,6 +430,7 @@ public final class NoteWindowCoordinator {
         recentDocumentsStore.record(canonicalURL)
         recoveryTasks[document.id]?.cancel()
         try? recoveryStore.remove(id: document.id)
+        _ = persistSession()
     }
 
     private func rename(id: UUID, to title: String) {
@@ -424,7 +458,7 @@ public final class NoteWindowCoordinator {
             documentIDsByURL[renamedURL.standardizedFileURL] = id
             recentDocumentsStore.remove(currentURL)
             recentDocumentsStore.record(renamedURL)
-            if document.isDirty { saveRecovery(for: document) }
+            saveRecovery(for: document)
         } catch {
             dialogs.presentError(error)
         }
@@ -436,6 +470,7 @@ public final class NoteWindowCoordinator {
             preferences,
             for: NotePreferencesStore.key(documentID: id, fileURL: document.fileURL)
         )
+        if !isRestoringSession { _ = persistSession() }
     }
 
     private func migratePreferences(from oldKey: String, to newKey: String) {
@@ -444,6 +479,37 @@ public final class NoteWindowCoordinator {
         else { return }
         preferencesStore.save(preferences, for: newKey)
         preferencesStore.remove(for: oldKey)
+    }
+
+    private func reportSessionError(_ message: String) {
+        NotificationCenter.default.post(name: .starMemoRecoveryError, object: nil, userInfo: ["message": message])
+        dialogs.presentError(NSError(domain: "StarMemo.Session", code: 1,
+            userInfo: [NSLocalizedDescriptionKey: message]))
+    }
+
+    private func persistSession(excluding excludedID: UUID? = nil) -> Bool {
+        guard !isRestoringSession else { return true }
+        guard !sessionLoadFailed else {
+            reportSessionError("会话未能安全读取，无法覆盖原始记录。请先将便签另存为 Markdown 文件。")
+            return false
+        }
+        do {
+            let records = documents.values.filter { $0.id != excludedID }.sorted { $0.id.uuidString < $1.id.uuidString }.map { document in
+                SessionDocument(id: document.id, text: document.text, savedText: document.savedText,
+                    fileURL: document.fileURL, title: document.displayTitle,
+                    modificationDate: document.lastKnownModificationDate,
+                    preferences: preferencesStore.load(for: NotePreferencesStore.key(documentID: document.id, fileURL: document.fileURL)) ?? defaultPreferencesProvider())
+            }
+            try recoveryStore.sessionStore.save(records)
+            for document in documents.values where document.id != excludedID && document.isDirty {
+                document.markRecoveryProtected()
+            }
+            return true
+        } catch {
+            for document in documents.values { document.markRecoveryFailed(error.localizedDescription) }
+            reportSessionError("会话保存失败，便签仍保持打开：\(error.localizedDescription)")
+            return false
+        }
     }
 
     private func close(_ document: MarkdownDocument) {

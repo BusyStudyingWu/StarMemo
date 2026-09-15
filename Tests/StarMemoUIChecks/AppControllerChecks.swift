@@ -165,7 +165,7 @@ let appControllerChecks: [Check] = [
         try expect(router.commands == ["flush", "quit"])
         try expect(terminationCount == 0)
     },
-    Check("launch creates a note and Dock reopen shows existing notes") {
+    Check("launch creates a note and application reopen shows existing notes") {
         let router = CommandRouterSpy()
         let defaults = UserDefaults(suiteName: "LaunchVisibility.\(UUID().uuidString)")!
         let controller = AppController(

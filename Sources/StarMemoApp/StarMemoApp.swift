@@ -35,7 +35,7 @@ struct StarMemoApp: App {
     @StateObject private var controller: AppController
 
     init() {
-        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.setActivationPolicy(.accessory)
         let liveController = AppController.live()
         _controller = StateObject(wrappedValue: liveController)
         appDelegate.controller = liveController

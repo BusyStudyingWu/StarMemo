@@ -20,7 +20,7 @@ struct UIChecks {
             Check("UI module loads") {
                 try expect(StarMemoUI.moduleName == "StarMemoUI")
             },
-        ] + markdownEngineDependencyChecks
+        ] + menuBarOnlyChecks + markdownEngineDependencyChecks
             + starMemoMarkdownConfigurationChecks
             + starMemoMarkdownEditorChecks
             + markdownEditorFocusBridgeChecks

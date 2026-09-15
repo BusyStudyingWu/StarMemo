@@ -16,6 +16,11 @@ private final class GlobalSettingsFixture {
         recentDocumentsStore: RecentDocumentsStore(defaults: defaults),
         preferencesStore: NotePreferencesStore(defaults: defaults),
         dialogs: AppKitDocumentDialogPresenter(),
+        defaultPreferencesProvider: { [unowned self] in
+            NoteWindowPreferences(frame: NoteWindowCoordinator.fallbackPreferences.frame,
+                appearance: settings.defaultAppearance, opacity: settings.windowOpacity,
+                isPinned: settings.defaultPinned)
+        },
         windowFactory: { [unowned self] document, preferences, close, rename, persist, activate in
             let controller = NoteWindowController(
                 document: document, preferences: preferences, fontSize: 15, settings: settings,
@@ -26,10 +31,10 @@ private final class GlobalSettingsFixture {
         }
     )
 
-    init() {
+    init(root existingRoot: URL? = nil) {
         defaults = UserDefaults(suiteName: suite)!
         settings = AppSettings(defaults: defaults)
-        root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        root = existingRoot ?? FileManager.default.temporaryDirectory.appendingPathComponent(suite)
     }
 
     func cleanUp() {
@@ -39,6 +44,55 @@ private final class GlobalSettingsFixture {
 }
 
 let globalSettingsChecks: [Check] = [
+    Check("session appearance survives quit and real window restoration with global updates") {
+        let first = GlobalSettingsFixture()
+        defer { first.cleanUp() }
+        let document = first.coordinator.newDocument(text: "preserve body")
+        let window = try require(first.windows[document.id])
+        window.setAppearance(.warmYellow)
+        window.setOpacity(0.45)
+        window.togglePinned()
+        let frame = try require(window.window?.frame)
+        let quit = await first.coordinator.requestQuit()
+        try expect(quit)
+        first.windows.values.forEach { $0.closeImmediately() }
+        let next = GlobalSettingsFixture(root: first.root)
+        defer { next.cleanUp() }
+        try next.coordinator.restoreDrafts()
+        let restored = try require(next.windows[document.id])
+        try expect(restored.state.appearance == .warmYellow, "Restoration replaced saved theme with default")
+        try expect(restored.state.opacity == 0.45 && restored.state.isPinned)
+        try expect(restored.window?.level == .floating && restored.window?.frame == frame)
+        next.settings.defaultAppearance = .lavender
+        next.settings.windowOpacity = 0.7
+        next.settings.defaultPinned = false
+        try expect(restored.state.appearance == .lavender && restored.state.opacity == 0.7)
+        try expect(!restored.state.isPinned && restored.window?.level == .normal)
+        let fresh = next.coordinator.newDocument()
+        let freshWindow = try require(next.windows[fresh.id])
+        try expect(freshWindow.state.appearance == .lavender && freshWindow.state.opacity == 0.7 && !freshWindow.state.isPinned)
+        let secondQuit = await next.coordinator.requestQuit()
+        try expect(secondQuit)
+        next.windows.values.forEach { $0.closeImmediately() }
+        let third = GlobalSettingsFixture(root: first.root)
+        defer { third.cleanUp() }
+        try third.coordinator.restoreDrafts()
+        let again = try require(third.windows[document.id])
+        try expect(again.state.appearance == .lavender && again.state.opacity == 0.7 && !again.state.isPinned)
+        try expect(third.coordinator.document(id: document.id)?.text == "preserve body")
+    },
+    Check("initial global subscription does not overwrite supplied window preferences") {
+        let fixture = GlobalSettingsFixture()
+        defer { fixture.cleanUp() }
+        let document = MarkdownDocument(text: "test")
+        let window = NoteWindowController(document: document,
+            preferences: NoteWindowPreferences(frame: NoteWindowCoordinator.fallbackPreferences.frame,
+                appearance: .graphite, opacity: 0.35, isPinned: true), fontSize: 15, settings: fixture.settings,
+            onCloseRequest: { _ in }, onRename: { _, _ in }, onPreferencesChange: { _, _ in }, onActivate: { _ in })
+        defer { window.closeImmediately() }
+        try expect(window.state.appearance == .graphite && window.state.opacity == 0.35)
+        try expect(window.state.isPinned && window.window?.level == .floating)
+    },
     Check("global settings update all existing notes and preserve body and local shortcuts") {
         let fixture = GlobalSettingsFixture()
         defer { fixture.cleanUp() }
@@ -71,7 +125,7 @@ let globalSettingsChecks: [Check] = [
         try expect(thirdWindow.state.appearance == .graphite && thirdWindow.state.opacity == 0.5 && thirdWindow.state.isPinned)
         try expect(first.text.isEmpty && second.text.isEmpty && !first.isDirty && !second.isDirty)
     },
-    Check("global settings override saved appearance on reopen without moving the note") {
+    Check("reopening a saved note keeps its last appearance without moving the note") {
         let fixture = GlobalSettingsFixture()
         defer { fixture.cleanUp() }
         try FileManager.default.createDirectory(at: fixture.root, withIntermediateDirectories: true)
@@ -89,8 +143,8 @@ let globalSettingsChecks: [Check] = [
         fixture.settings.defaultPinned = true
         let reopened = try fixture.coordinator.openDocument(at: url)
         let reopenedWindow = try require(fixture.windows[reopened.id])
-        try expect(reopenedWindow.state.appearance == .lavender, "Saved per-note appearance overrode global settings")
-        try expect(reopenedWindow.state.opacity == 0 && reopenedWindow.state.isPinned)
+        try expect(reopenedWindow.state.appearance == .warmYellow, "Reopen discarded saved per-note appearance")
+        try expect(reopenedWindow.state.opacity == controller.state.opacity && reopenedWindow.state.isPinned == controller.state.isPinned)
         try expect(reopenedWindow.window?.frame == frame)
         let persistedBody = try Data(contentsOf: url)
         try expect(persistedBody == original)

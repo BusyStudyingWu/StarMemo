@@ -135,15 +135,16 @@ public final class NoteWindowController: NSWindowController, NSWindowDelegate, N
                     && self.state.livePreview.revealsActiveBlockMarkers
             }
         )
-        // Apply initial global values as well as changes. Saved window frames remain intact.
+        // Initialization uses the supplied per-note preferences. Only subsequent
+        // user changes to global settings should overwrite an existing note.
         if let settings {
-            settings.$backgroundTransparency.sink { [weak self] value in
+            settings.$backgroundTransparency.dropFirst().sink { [weak self] value in
                 self?.setOpacity(value.isFinite ? 1 - min(max(value, 0), 1) : 1)
             }.store(in: &settingsObservers)
-            settings.$defaultAppearance.sink { [weak self] value in
+            settings.$defaultAppearance.dropFirst().sink { [weak self] value in
                 self?.setAppearance(value)
             }.store(in: &settingsObservers)
-            settings.$defaultPinned.sink { [weak self] value in
+            settings.$defaultPinned.dropFirst().sink { [weak self] value in
                 guard let self, self.state.isPinned != value else { return }
                 self.togglePinned()
             }.store(in: &settingsObservers)

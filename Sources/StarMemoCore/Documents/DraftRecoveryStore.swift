@@ -32,6 +32,10 @@ public struct DraftRecoveryStore: Sendable {
         self.directory = directory
     }
 
+    public var sessionStore: SessionStore {
+        SessionStore(url: directory.appendingPathComponent("Session/session.json"))
+    }
+
     public func save(_ draft: RecoveryDraft) throws {
         try FileManager.default.createDirectory(
             at: directory,

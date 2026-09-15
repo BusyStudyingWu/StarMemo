@@ -42,6 +42,8 @@ private final class FakeNoteWindow: NoteWindowHandling {
     private(set) var renameCount = 0
     var onActivate: (() -> Void)?
     var onRename: ((String) -> Void)?
+    var preferences: NoteWindowPreferences?
+    var onPreferences: ((NoteWindowPreferences) -> Void)?
 
     init(documentID: UUID) {
         self.documentID = documentID
@@ -69,6 +71,8 @@ private final class WindowRecorder {
         onActivate: @escaping (UUID) -> Void
     ) -> any NoteWindowHandling {
         let window = FakeNoteWindow(documentID: document.id)
+        window.preferences = preferences
+        window.onPreferences = { onPreferencesChange(document.id, $0) }
         window.onActivate = { onActivate(document.id) }
         window.onRename = { onRename(document.id, $0) }
         windows[document.id] = window
@@ -77,13 +81,13 @@ private final class WindowRecorder {
 }
 
 @MainActor
-private func coordinatorFixture() -> (
+private func coordinatorFixture(root existingRoot: URL? = nil) -> (
     NoteWindowCoordinator,
     FakeDialogPresenter,
     WindowRecorder,
     URL
 ) {
-    let root = FileManager.default.temporaryDirectory
+    let root = existingRoot ?? FileManager.default.temporaryDirectory
         .appendingPathComponent("StarMemoCoordinatorChecks")
         .appendingPathComponent(UUID().uuidString)
     try! FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -103,6 +107,154 @@ private func coordinatorFixture() -> (
 
 @MainActor
 let noteWindowCoordinatorChecks: [Check] = [
+    Check("session duplicate file records preserve distinct recovered text") {
+        let (first, _, _, root) = coordinatorFixture()
+        let url = root.appendingPathComponent("duplicate.md")
+        try "disk".write(to: url, atomically: true, encoding: .utf8)
+        let original = try first.openDocument(at: url)
+        let store = DraftRecoveryStore(directory: root.appendingPathComponent("Recovery")).sessionStore
+        var records = try require(try store.load()).documents
+        records.append(SessionDocument(id: UUID(), text: "other recovered text", savedText: "disk", fileURL: url,
+            title: "duplicate", modificationDate: nil, preferences: NoteWindowCoordinator.fallbackPreferences))
+        let secondID = records[1].id
+        try store.save(records)
+        let (next, _, _, _) = coordinatorFixture(root: root)
+        try next.restoreDrafts()
+        try expect(next.document(id: original.id) != nil)
+        try expect(next.document(id: secondID)?.text == "other recovered text")
+        try expect(next.document(id: secondID)?.fileURL == nil)
+    },
+    Check("session close discard stays closed despite stale recovery and queued edits") {
+        let (first, dialogs, _, root) = coordinatorFixture()
+        let document = first.newDocument(text: "discard")
+        document.text = "queued"
+        dialogs.closeDecisions = [.discard]
+        let closed = await first.requestClose(document.id)
+        try expect(closed)
+        try await Task.sleep(for: .milliseconds(1100))
+        let recovery = DraftRecoveryStore(directory: root.appendingPathComponent("Recovery"))
+        let drafts = try recovery.loadAll()
+        try expect(drafts.isEmpty)
+        try recovery.save(RecoveryDraft(id: document.id, text: "stale", fileURL: nil, suggestedTitle: "old", updatedAt: Date()))
+        let (next, _, _, _) = coordinatorFixture(root: root)
+        try next.restoreDrafts()
+        try expect(next.openDocumentCount == 0)
+    },
+    Check("session cancelled close preserves draft and window position") {
+        let (first, dialogs, recorder, root) = coordinatorFixture()
+        let document = first.newDocument(text: "keep")
+        var preferences = NoteWindowCoordinator.fallbackPreferences
+        preferences.frame.origin.x = 315
+        preferences.frame.origin.y = 275
+        recorder.windows[document.id]?.onPreferences?(preferences)
+        dialogs.closeDecisions = [.cancel]
+        let closed = await first.requestClose(document.id)
+        try expect(!closed)
+        let quit = await first.requestQuit()
+        try expect(quit)
+        let (next, _, nextWindows, _) = coordinatorFixture(root: root)
+        try next.restoreDrafts()
+        try expect(next.document(id: document.id)?.text == "keep")
+        try expect(nextWindows.windows[document.id]?.preferences?.frame == preferences.frame)
+    },
+    Check("session close write failure does not remove the note") {
+        let (first, dialogs, _, root) = coordinatorFixture()
+        let document = first.newDocument(text: "keep")
+        let url = root.appendingPathComponent("Recovery/Session/session.json")
+        try FileManager.default.removeItem(at: url)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+        dialogs.closeDecisions = [.discard]
+        let closed = await first.requestClose(document.id)
+        try expect(!closed && first.document(id: document.id) != nil)
+        try expect(!dialogs.errors.isEmpty)
+    },
+    Check("session missing file becomes recoverable untitled draft") {
+        let (first, _, _, root) = coordinatorFixture()
+        let url = root.appendingPathComponent("missing.md")
+        try "preserved".write(to: url, atomically: true, encoding: .utf8)
+        let original = try first.openDocument(at: url)
+        let quit = await first.requestQuit()
+        try expect(quit)
+        try FileManager.default.removeItem(at: url)
+        let (next, dialogs, _, _) = coordinatorFixture(root: root)
+        try next.restoreDrafts()
+        let restored = try require(next.document(id: original.id))
+        try expect(restored.text == "preserved" && restored.fileURL == nil && restored.isDirty)
+        try expect(!dialogs.errors.isEmpty)
+    },
+    Check("session damaged record preserves valid notes and original backup") {
+        let (first, _, _, root) = coordinatorFixture()
+        let original = first.newDocument(text: "valid")
+        let url = root.appendingPathComponent("Recovery/Session/session.json")
+        let bytes = try Data(contentsOf: url)
+        var rows = try require(try JSONSerialization.jsonObject(with: bytes) as? [Any])
+        rows.append(["bad": true])
+        let damaged = try JSONSerialization.data(withJSONObject: rows)
+        try damaged.write(to: url)
+        let (next, dialogs, _, _) = coordinatorFixture(root: root)
+        try next.restoreDrafts()
+        try expect(next.document(id: original.id)?.text == "valid")
+        try expect(!dialogs.errors.isEmpty)
+        let files = try FileManager.default.contentsOfDirectory(at: url.deletingLastPathComponent(), includingPropertiesForKeys: nil)
+        let backup = try require(files.first { $0.lastPathComponent.hasPrefix("damaged-") })
+        let backupData = try Data(contentsOf: backup)
+        try expect(backupData == damaged)
+    },
+    Check("session edited text is checkpointed without quitting") {
+        let (first, _, _, root) = coordinatorFixture()
+        let original = first.newDocument(text: "before")
+        original.text = "after"
+        try await Task.sleep(for: .milliseconds(1300))
+        let (next, _, _, _) = coordinatorFixture(root: root)
+        try next.restoreDrafts()
+        try expect(next.document(id: original.id)?.text == "after")
+    },
+    Check("session quit restores clean files and unsaved drafts without save prompts") {
+        let (first, dialogs, _, root) = coordinatorFixture()
+        let url = root.appendingPathComponent("saved.md")
+        try "saved".write(to: url, atomically: true, encoding: .utf8)
+        let clean = try first.openDocument(at: url)
+        let draft = first.newDocument(text: "unfinished", suggestedTitle: "草稿")
+        let quit = await first.requestQuit()
+        try expect(quit, "Normal quit must preserve drafts without a save dialog")
+        try expect(dialogs.errors.isEmpty)
+        let (next, _, _, _) = coordinatorFixture(root: root)
+        try next.restoreDrafts()
+        try expect(next.document(id: clean.id)?.text == "saved")
+        try expect(next.document(id: draft.id)?.text == "unfinished")
+        try expect(next.document(id: draft.id)?.fileURL == nil)
+        try next.restoreDrafts()
+        try expect(next.openDocumentCount == 2)
+    },
+    Check("session quit fails safely when snapshot cannot be written") {
+        let (coordinator, dialogs, _, root) = coordinatorFixture()
+        try Data("blocked".utf8).write(to: root.appendingPathComponent("Recovery"))
+        let document = coordinator.newDocument(text: "must survive")
+        dialogs.closeDecisions = [.discard]
+        let quit = await coordinator.requestQuit()
+        try expect(!quit && coordinator.document(id: document.id) != nil)
+        try expect(!dialogs.errors.isEmpty)
+    },
+    Check("session restores latest clean disk text and local edits separately") {
+        let (first, _, _, root) = coordinatorFixture()
+        let cleanURL = root.appendingPathComponent("clean.md")
+        let dirtyURL = root.appendingPathComponent("dirty.md")
+        try "base".write(to: cleanURL, atomically: true, encoding: .utf8)
+        try "base".write(to: dirtyURL, atomically: true, encoding: .utf8)
+        let clean = try first.openDocument(at: cleanURL)
+        let dirty = try first.openDocument(at: dirtyURL)
+        dirty.text = "local"
+        let quit = await first.requestQuit()
+        try expect(quit)
+        try "external".write(to: cleanURL, atomically: true, encoding: .utf8)
+        try "external".write(to: dirtyURL, atomically: true, encoding: .utf8)
+        let (next, _, _, _) = coordinatorFixture(root: root)
+        try next.restoreDrafts()
+        try expect(next.document(id: clean.id)?.text == "external")
+        try expect(next.document(id: clean.id)?.isDirty == false)
+        try expect(next.document(id: dirty.id)?.text == "local")
+        try expect(next.document(id: dirty.id)?.savedText == "base")
+    },
     Check("restoring historical duplicate drafts detaches the second copy without losing text") {
         let (coordinator, _, _, root) = coordinatorFixture()
         let url = root.appendingPathComponent("shared.md")
@@ -464,7 +616,7 @@ let noteWindowCoordinatorChecks: [Check] = [
         try expect(recorder.windows[first.id]?.togglePinnedCount == 1)
         try expect(recorder.windows[second.id]?.togglePinnedCount == 0)
     },
-    Check("cancelled quit does not partially close other notes") {
+    Check("session quit preserves all notes instead of asking close decisions") {
         let (coordinator, dialogs, recorder, root) = coordinatorFixture()
         let first = coordinator.newDocument()
         let second = coordinator.newDocument()
@@ -477,7 +629,7 @@ let noteWindowCoordinatorChecks: [Check] = [
         let drafts = try DraftRecoveryStore(
             directory: root.appendingPathComponent("Recovery")
         ).loadAll()
-        try expect(!didQuit)
+        try expect(didQuit)
         try expect(coordinator.openDocumentCount == 2)
         try expect(recorder.windows[first.id]?.closeCount == 0)
         try expect(recorder.windows[second.id]?.closeCount == 0)
