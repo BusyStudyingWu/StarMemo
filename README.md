@@ -1,5 +1,7 @@
 # StarMemo
 
+<img src="docs/assets/starmemo-icon.png" alt="StarMemo：便签与星星" width="128" height="128">
+
 把 Markdown 写在桌面上。
 
 StarMemo 是一款 macOS 原生便签应用，适合随手记录、待办清单和工作备忘。常驻菜单栏，不占 Dock。

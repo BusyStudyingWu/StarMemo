@@ -19,6 +19,8 @@ UI 检查需要已登录的图形桌面，会显示临时窗口。不要使用�
 
 ## 提交修改
 
+应用图标原图在 `docs/assets/starmemo-icon.png`。更新后运行 `bash Scripts/build-icon.sh` 生成多尺寸 `.icns`，再运行 `bash Scripts/check-app-icon.sh` 验证；应用构建也会检查包内图标。菜单栏单色图标独立于应用图标。
+
 - 使用独立分支，一次解决一个问题，并说明测试结果和未覆盖项。
 - 修复问题先补复现检查；编辑器改动需检查中文输入法、撤销/重做及失焦重进。
 - 当前编辑器入口是 `StarMemoMarkdownEditor`；旧实现与模块边界见[架构文档](docs/ARCHITECTURE.md)。

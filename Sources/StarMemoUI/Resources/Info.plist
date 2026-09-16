@@ -6,6 +6,8 @@
     <string>zh_CN</string>
     <key>CFBundleExecutable</key>
     <string>StarMemo</string>
+    <key>CFBundleIconFile</key>
+    <string>StarMemo.icns</string>
     <key>CFBundleIdentifier</key>
     <string>com.starmemo.app</string>
     <key>CFBundleInfoDictionaryVersion</key>
