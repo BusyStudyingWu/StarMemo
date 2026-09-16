@@ -1,58 +1,64 @@
 # 架构与技术栈
 
-## 技术栈
+StarMemo 使用 Swift 6、SwiftUI、AppKit 和 Swift Package Manager，最低运行系统为 macOS 14。构建工具链要求 Swift 6.3+。
 
-| 层次 | 技术 | 作用 |
-| --- | --- | --- |
-| 平台 | macOS 14+ | 原生窗口、菜单栏、文件面板 |
-| 语言与构建 | Swift 6 模式、Swift Package Manager；工具链 6.3+ | 模块构建与依赖管理 |
-| 界面 | SwiftUI | 菜单、设置、标题栏和状态绑定 |
-| 原生交互 | AppKit / NSTextView / NSPanel | 文本输入、窗口拖动、焦点及系统对话框 |
-| 状态 | Combine / ObservableObject | 文档和界面状态更新 |
-| Markdown | 内置 MarkdownEngine 源码快照 | Markdown 文本编辑、标记隐藏与渲染 |
-| 持久化 | Foundation 文件 API、恢复记录、UserDefaults | Markdown 文件、恢复副本、最近文件与偏好 |
-
-## 模块关系
+## 模块边界
 
 ```text
-StarMemoApp
-└── StarMemoUI
-    ├── StarMemoCore
-    └── MarkdownEngine（Vendor 内置）
-
-StarMemoCoreChecks / StarMemoUIChecks
-└── StarMemoTestSupport
+StarMemoApp → StarMemoUI → StarMemoCore
+             └────────→ MarkdownEngine（Vendor）
+StarMemoApp ───────────→ StarMemoCore
 ```
 
-`StarMemoApp` 启动应用。`AppController` 连接菜单、设置和文档窗口管理。
-`NoteWindowCoordinator` 管理打开的文档、窗口、保存/关闭决策和恢复任务。
-每个 `NoteWindowController` 持有一个原生面板，并挂载 SwiftUI 界面。
+| 目录 | 职责 |
+| --- | --- |
+| `Sources/StarMemoApp` | 启动、应用生命周期与菜单栏入口 |
+| `Sources/StarMemoCore` | 文档状态、文件读写、会话恢复和偏好模型 |
+| `Sources/StarMemoUI` | 原生窗口、设置、标题栏与编辑器集成 |
+| `Vendor/swift-markdown-engine` | Markdown 解析、文本布局和行内预览 |
+| `Tests` | 核心检查、AppKit UI 检查及共享测试工具 |
+| `Scripts` | 应用包构建 |
+| `docs/superpowers` | 历史设计与验证记录，不代表当前使用说明 |
 
-0.1.4 起采用普通应用激活策略，保留 `MenuBarExtra`，并由 `StarMemoAppCommands` 提供应用主菜单命令。
-0.1.5 起设置不再追踪活动便签。`AppSettings.backgroundTransparency` 保存真实透明度，窗口控制器分别订阅各项全局设置；首次值覆盖旧外观但保留窗口位置，关闭时取消订阅。
-`NoteBackgroundView` 是唯一背景 alpha 层，直接使用 `1 - backgroundTransparency`，不叠加独立磨砂底板。正文和控件保持独立，窗口 alpha 不变。系统减少透明度仅覆盖显示及滑块启用状态，不回写用户保存值。
+Core 不依赖 UI 或 MarkdownEngine；界面状态通过 Combine 和 SwiftUI 绑定更新。
 
-## 编辑数据流
+## 窗口与设置
 
-`MarkdownDocument` 是 Markdown 正文的唯一业务数据源。
-`StarMemoMarkdownEditor` 将文档绑定到 MarkdownEngine；原生文本变化经绑定回写文档。
-`MarkdownEditorFocusBridge` 协调正文点击、失焦和输入法组合状态，避免标题操作误触正文编辑。
-主题和字号变更在现有编辑器上更新，保留选区、滚动与撤销历史。
+`StarMemoApp` 使用 accessory 激活策略和 `MenuBarExtra`，不显示运行中的 Dock 图标。
+`AppController` 连接菜单、设置和窗口管理。
 
-标题栏的布局锚点标记名字和按钮范围；`TitleBarDragRegion` 仅对空白区域调用系统窗口拖动。
-重命名和保存由协调器交给文档存储服务，不由标题组件直接操作文件。
+`NoteWindowCoordinator` 管理文档与窗口集合、保存/关闭决策及会话恢复。
+`NoteWindowController` 管理单张便签的 AppKit 面板和 SwiftUI 内容。
+标题栏仅在空白区域触发窗口拖动，名称区域用于改名。
 
-## 存储与边界
+恢复窗口时先应用该便签保存的外观；全局设置订阅跳过首次值，后续用户修改对应选项时再统一应用。字号为全局设置。
+背景独立使用 `1 - backgroundTransparency`，不降低文字和控件的透明度。
 
-`DocumentStore` 负责读取、保存、重命名和外部修改检查。
-`DraftRecoveryStore` 保存恢复副本；它不替代用户选择路径后的正式保存。
-窗口偏好和最近文件记录与正文文件分开保存。
+## 编辑与保存
 
-`StarMemoCore/Markdown` 中保留早期解析与预览逻辑；当前生产编辑路径使用 MarkdownEngine。
-UI 测试中的 `legacy:` 前缀区分早期实现检查，不能用这些检查单独证明生产编辑器行为正确。
+`MarkdownDocument` 保存正文及已保存基线。
+生产编辑路径为：
 
-## 测试边界
+```text
+NoteWindowView → StarMemoMarkdownEditor → MarkdownEngine.NativeTextViewWrapper
+                         ↕ 文本绑定
+                   MarkdownDocument
+```
 
-核心测试覆盖存储、冲突及 Markdown 基础逻辑；UI 测试覆盖原生编辑器、焦点、标题栏和窗口协调。
-UI 测试运行完整 AppKit 事件循环，需要图形桌面。
-自动测试并不替代多显示器、连续拖动手感、不同系统版本及辅助功能的人工验收。
+`MarkdownEditorFocusBridge` 协调正文点击、失焦和输入法组合状态。
+主题、字号及编辑命令在现有编辑器上更新，避免重建导致选区或撤销历史丢失。
+
+- `DocumentStore`：正式 Markdown 文件的读取、保存、改名和外部修改检查。
+- `SessionStore`：未关闭便签的正文、保存基线、路径、标题与窗口偏好；采用原子写入。
+- `DraftRecoveryStore`：恢复副本及旧草稿兼容。
+- `UserDefaults`：全局设置、窗口偏好与最近文件记录。
+
+正常退出保存会话；主动关闭单张便签走保存／不保存／取消流程。会话不是正式文件备份，也没有应用层加密。
+
+## 旧实现与测试
+
+`MarkdownEditorView`、`MarkdownTextView`、`MarkdownPreviewView` 及 Core 中的旧 Markdown 解析/预览代码仍保留在项目中，但不属于当前便签正文的主编辑路径。
+修改现行编辑行为应从 `StarMemoMarkdownEditor` 和 Vendor 引擎入手；测试中的 `legacy:` 检查不能替代生产路径验收。
+
+核心检查覆盖存储、冲突、恢复及基础 Markdown 逻辑；UI 检查覆盖真实编辑器、焦点、窗口和设置。
+自动检查不能替代中文输入法、多显示器拖动、不同系统版本及辅助功能的人工验收。
