@@ -4,9 +4,16 @@ import AppKit
 import SwiftUI
 
 let statusBarIconChecks: [Check] = [
+    Check("menu bar label exposes an Image rather than an unsupported custom shape") {
+        let label: Any = StatusBarIcon().body
+        try expect(label is Image, "MenuBarExtra needs an Image label; a rendered Shape preview is not sufficient")
+    },
     Check("status bar uses one note and star icon without a visible title") {
         try expect(StatusBarPresentation.visibleTitle == nil)
         try expect(StatusBarPresentation.accessibilityLabel == "StarMemo")
+        try expect(StatusBarIcon.templateImage.isTemplate)
+        try expect(StatusBarIcon.templateImage.size == NSSize(width: 18, height: 18))
+        try expect(StatusBarIcon.templateImage.accessibilityDescription == "StarMemo")
     },
     Check("status bar outline star is hollow and legible in light and dark") {
         for scheme in [ColorScheme.light, .dark] {

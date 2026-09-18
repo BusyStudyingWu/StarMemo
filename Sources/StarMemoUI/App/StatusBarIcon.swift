@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 public enum StatusBarPresentation {
@@ -8,14 +9,30 @@ public enum StatusBarPresentation {
 public struct StatusBarIcon: View {
     public init() {}
 
-    public var body: some View {
-        FoldedStarNote()
-        .stroke(style: StrokeStyle(lineWidth: 1.25, lineCap: .round, lineJoin: .round))
-        .frame(width: 18, height: 18)
-        .foregroundStyle(.primary)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(StatusBarPresentation.accessibilityLabel)
+    // MenuBarExtra extracts an Image from its label; it does not host an
+    // arbitrary Shape view, even when that view renders correctly in previews.
+    public var body: Image {
+        Image(nsImage: Self.templateImage)
+            .renderingMode(.template)
     }
+
+    public static let templateImage: NSImage = {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { rect in
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            context.saveGState()
+            defer { context.restoreGState() }
+            context.addPath(FoldedStarNote().path(in: rect).cgPath)
+            context.setStrokeColor(NSColor.black.cgColor)
+            context.setLineWidth(1.25)
+            context.setLineCap(.round)
+            context.setLineJoin(.round)
+            context.strokePath()
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = StatusBarPresentation.accessibilityLabel
+        return image
+    }()
 }
 
 /// A single 18-point silhouette: folded note and a large hollow star.
